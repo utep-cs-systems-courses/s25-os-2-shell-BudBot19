@@ -8,12 +8,14 @@ current_path = og_path
 
 
 
-def program_fork(command):
-    args = []
+def program_fork(command, args):
+    if(os.system(f'command -v {command} > /dev/null 2>&1') != 0): #if command does not exist
+        os.write(1, 'invalid command!\n')
+        return
+
     pid = os.fork()
 
     if pid == 0:
-        args.append(command)
         os.execvpe(command, args, os.environ)
 
     else:
@@ -22,8 +24,42 @@ def program_fork(command):
 
 #######################################################################################################
 
-def pipe_handler(value, input):   ##needs to recieve an input value and pipe it to next program
-    os.write(1, "pipe_handler activated!!".encode())
+def pipe_handler(input, length):   ##needs to recieve an input value and pipe it to next program
+
+    os.write(1, "pipe_handler activated!!\n".encode())
+
+    if length == 0:
+        return
+
+    
+
+    pid = os.fork()
+
+    if pid != 0:  ##shell program
+        os.wait()
+        return
+
+    iFd, oFd = os.pipe()
+
+    pid = os.fork()
+
+    if pid == 0:
+        os.close(oFd)
+        os.dup2(iFd, 0) ##duplicates stdin
+        os.close(iFd)
+
+        os.execvpe(input[1][0], input[1][0:], os.environ)
+
+    else: 
+         os.close(iFd)
+         os.dup2(oFd, 1) ##duplicates stdout
+         os.close(oFd)
+         
+         os.execvpe(input[0][0], input[0][0:], os.environ)
+
+         os.wait()
+            
+    
     return
     
 
@@ -33,42 +69,44 @@ def pipe_handler(value, input):   ##needs to recieve an input value and pipe it 
 ############################ handles input
 
 def command_handler(input, current_path):
-    input = input.split(' ')
-    returnVal = None;
-    i = 0
+    input = input.split('|')  ##seperates for potential piping
 
-    if input[0] == 'cd' and len(input) > 1:
-        if input[1] == '..':
-            if os.path.dirname(current_path):
-                current_path = os.path.dirname(current_path)
-                return current_path
-            else:
-                os.write(1, "directory change not valid".encode())
+    for index in range(len(input)):
+        input[index] = input[index].split(" ")
+        if len(input) > 1:
+            input[index].remove('')
 
-        else:
-            if os.path.isdir(input[1]):
-                return current_path + "/" + input[1]
-            else:
-                os.write(1, "directory change not valid".encode())
+    k = 0
 
 
-    else:
-
-        while (i < len(input)):
-
-            if input[i] == '|':
-
-                pipe_handler(returnVal)
-
-            elif (os.system(f'command -v {input[i]} > /dev/null 2>&1') == 0): ##if command exists
-
-                returnVal = program_fork(input[i])
-
-            else:
-                os.write(1, "invalid command".encode())
+    while (k < len(input)):
+        if input[k][0] == 'cd' and len(input[k]) > 1:       #handles directory changes
+            if input[k][1] == '..':
+                if os.path.dirname(current_path):
+                    current_path = os.path.dirname(current_path)
+                    return current_path
+                else:
+                    os.write(1, "directory change not valid\n".encode())
                 
-            i+=1
+            else:
+                if os.path.isdir(input[k][1]):
+                    return current_path + "/" + input[k][1]
+                else:
+                    os.write(1, "directory change not valid\n".encode())
+                
+
+        else:    #passes other commands to proper functions
+            
+            if (len(input) > 1): 
+                    
+                pipe_handler(input, len(input))
+                
+            else:
+            
+                program_fork(input[k][0], input[k][0:])
+
         
+        k+=1 #iterates through all processes
 
 
         
@@ -76,7 +114,7 @@ def command_handler(input, current_path):
     
 
     return current_path
-        
+    
 #########################################################################################################
 ############################ main program:
 
@@ -95,4 +133,20 @@ while(True):
                 input = ''
                 os.write(1, (current_path.encode()+'$ '.encode()))
         else:
-                input += instant.decode()
+            input += instant.decode()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
