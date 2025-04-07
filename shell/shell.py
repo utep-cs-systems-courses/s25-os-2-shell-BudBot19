@@ -9,15 +9,20 @@ current_path = og_path
 
 
 def program_fork(command, args):
-    if(os.system(f'command -v {command} > /dev/null 2>&1') != 0): #if command does not exist
-        os.write(1, 'invalid command!\n')
-        return
 
     pid = os.fork()
 
-    if pid == 0:
-        os.execvpe(command, args, os.environ)
 
+    if pid == 0:
+
+        try:
+            command = os.path.abspath("/bin/"+command)
+            os.execve(command, args, os.environ)
+        except:
+            os.write(1, f"{command}: invalid command!\n".encode())
+
+        sys.exit()
+            
     else:
         os.wait()
 
@@ -35,8 +40,8 @@ def pipe_handler(input, length):   ##needs to recieve an input value and pipe it
 
     pid = os.fork()
 
-    if pid != 0:  ##shell program
-        os.wait()
+    if pid != 0:  ##shell program waits until the youngest child is done
+        os.waitpid(pid, 0)
         return
 
     iFd, oFd = os.pipe()
@@ -48,16 +53,28 @@ def pipe_handler(input, length):   ##needs to recieve an input value and pipe it
         os.dup2(iFd, 0) ##duplicates stdin
         os.close(iFd)
 
-        os.execvpe(input[1][0], input[1][0:], os.environ)
+        try:
+            command = os.path.abspath("/bin/"+input[1][0])
+            os.execve(command, input[1][0:], os.environ)
+        except:
+            os.write(1, 'invalid command!\n'.encode())
+            
+        sys.exit()
 
     else: 
          os.close(iFd)
          os.dup2(oFd, 1) ##duplicates stdout
          os.close(oFd)
          
-         os.execvpe(input[0][0], input[0][0:], os.environ)
+         try:
+            command = os.path.abspath("/bin/"+input[0][0])
+            os.execve(command, input[0][0:], os.environ)
+         except:
+            os.write(1, 'invalid command!\n'.encode())
 
          os.wait()
+
+         sys.exit()
             
     
     return
@@ -100,6 +117,7 @@ def command_handler(input, current_path):
             if (len(input) > 1): 
                     
                 pipe_handler(input, len(input))
+                return current_path
                 
             else:
             
@@ -124,14 +142,15 @@ while(True):
         instant = os.read(0,1)
         if instant.decode() == '\n':
 
-                if input == 'exit':
-                        break
+            if input == 'exit':
+                break
 
-                current_path = command_handler(input, current_path)
-                os.chdir(current_path)
+            current_path = command_handler(input, current_path)
+            os.chdir(current_path)
 
-                input = ''
-                os.write(1, (current_path.encode()+'$ '.encode()))
+            input = ''
+            os.write(1, (current_path.encode()+'$ '.encode()))
+            
         else:
             input += instant.decode()
 
